@@ -1,0 +1,10 @@
+server:
+  port: 8080
+review:
+  image-width: 1200
+  image-height: 1200
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
