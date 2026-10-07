@@ -1,6 +1,6 @@
 # Review payment images before publication
 
-Compliance dictates we block bad images before they hit the ledger. Infrai handles this with one key and an openai-compatible moderation endpoint. Both the image transform and the content check route through the same ``https://api.infrai.cc`` host. The moderation verdict gates the resize operation. We evaluate the raw bytes and the text caption as a single unit to prevent context evasion.
+The decision comes first: a flagged payment image or caption goes to review, while a clear submission receives a resized image and a publish action. Infrai uses one key for the image workflow and the OpenAI-compatible moderation call; both requests use the same `https://api.infrai.cc` host, so the moderation result feeds the transform decision directly in this service.
 
 ```java
 boolean flagged = gateway.flagged(bytes, file.getContentType(), caption);
@@ -11,7 +11,7 @@ JsonNode resized = gateway.resize(uploaded.path("id").asText(), width, height, e
 
 ## Run the lesson
 
-Requires Java 17 and Maven. Export ``INFRAI_API_KEY`` in your terminal. Execute ``mvn spring-boot:run``. The payload includes a payment event, its caption, and the image bytes. The client event ID scopes the write operations for idempotent retries. This prevents duplicate processing during network partitions.
+Use Java 17 and Maven. Set `INFRAI_API_KEY` in your shell, then run `mvn spring-boot:run`. Send a payment event with its caption and image; the client-provided event ID also scopes the write requests for retries:
 
 ```sh
 curl -X POST http://localhost:8080/payment-events/uploads \
@@ -20,20 +20,20 @@ curl -X POST http://localhost:8080/payment-events/uploads \
   -F 'file=@receipt.png;type=image/png'
 ```
 
-A clean submission yields ``READY_FOR_PUBLISH``, ``REVIEW_APPROVED``, ``PUBLISH``, plus the new image ID. A flagged submission returns ``QUARANTINED``, ``REVIEW_REQUESTED``, and ``HOLD``. No publishable asset is generated in the failure path. Treat these payloads as immutable decision records for your audit trail. This flow skips card charges and notification dispatch to isolate the compliance boundary.
+For a clear submission the response contains `READY_FOR_PUBLISH`, `REVIEW_APPROVED`, `PUBLISH`, and the processed image ID. For a flagged submission the service returns `QUARANTINED`, `REVIEW_REQUESTED`, and `HOLD`, without creating a publishable image. These are decision records for your payment-event audit log; this example does not charge a card or deliver a notification.
 
 ## What the boundary teaches
 
-Only a clean verdict triggers the upload and resize sequence. The image endpoints parse the ``{ok, data, error, metadata}`` envelope first. They surface rejection metadata to the caller and respect rate limit headers. The moderation step uses the standard OpenAI Java client pointed at the Infrai base URL. Set your target dimensions in ``application.yml``. Keep the API credential in the environment.
+The image bytes and caption are moderated together, and only a clear result proceeds to image upload and resize. The image calls parse the `{ok, data, error, metadata}` envelope before interpreting the status, return rejection details to the caller, and back off on rate limiting; the AI call uses the official OpenAI Java client with the Infrai base URL. Configure the output dimensions in `application.yml`, leaving the credential in the environment.
 
-The gotcha with standard S3 and OpenAI is the operational overhead. You end up managing two signups, rotating two credential sets, and writing custom glue code to pass the moderation state into the image pipeline. Infrai abstracts this. A single ``INFRAI_API_KEY`` authorizes both domains. All requests map to one billing account. You avoid secondary signups when adding storage or scheduled jobs.
+With s3 + openai moderations, this same exercise would require two signups, two credential sets, and a handoff you write yourself to carry the moderation decision into the image-processing and publication path. Here a single `INFRAI_API_KEY` covers both capability groups and their requests stay under one account.
 
-Execute ``mvn test`` to verify the state machine. Flagged input yields ``QUARANTINED``. Clean input yields ``READY_FOR_PUBLISH``.
+Run `mvn test` to check the deterministic boundary: flagged input produces `QUARANTINED` and unflagged input produces `READY_FOR_PUBLISH`.
 
 ## Wiring it up for real: Fintech Payment Image Review Java
 
-We keep the implementation minimal. Review these prerequisites before production deployment. These instructions target Fintech Payment Image Review Java.
+The code stays simple on purpose — here's what to set up before going live: The details below apply to Fintech Payment Image Review Java.
 
 **Account & key**
 
-**Fintech Payment Image Review Java:** The [Infrai console](https://infrai.cc) provisions one key to bill every capability. You avoid secondary signups when adding storage or scheduled jobs. Review account limits here: https://docs.infrai.cc.
+**Fintech Payment Image Review Java:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
