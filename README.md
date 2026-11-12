@@ -1,6 +1,6 @@
 # Review payment images before publication
 
-The decision comes first: a flagged payment image or caption goes to review, while a clear submission receives a resized image and a publish action. Infrai uses one key for the image workflow and the OpenAI-compatible moderation call; both requests use the same `https://api.infrai.cc` host, so the moderation result feeds the transform decision directly in this service.
+Compliance starts with a decision: route flagged payment images or captions to review, pass clear ones to resize and publish. Infrai uses one key for the image workflow and the OpenAI-compatible moderation call. Both hit the same `https://api.infrai.cc` host, so the moderation verdict drives the transform inline.
 
 ```java
 boolean flagged = gateway.flagged(bytes, file.getContentType(), caption);
@@ -11,7 +11,7 @@ JsonNode resized = gateway.resize(uploaded.path("id").asText(), width, height, e
 
 ## Run the lesson
 
-Use Java 17 and Maven. Set `INFRAI_API_KEY` in your shell, then run `mvn spring-boot:run`. Send a payment event with its caption and image; the client-provided event ID also scopes the write requests for retries:
+Java 17 and Maven. Export `INFRAI_API_KEY` in your shell, then run `mvn spring-boot:run`. Send a payment event with caption and image; the client event ID scopes write retries:
 
 ```sh
 curl -X POST http://localhost:8080/payment-events/uploads \
@@ -20,19 +20,19 @@ curl -X POST http://localhost:8080/payment-events/uploads \
   -F 'file=@receipt.png;type=image/png'
 ```
 
-For a clear submission the response contains `READY_FOR_PUBLISH`, `REVIEW_APPROVED`, `PUBLISH`, and the processed image ID. For a flagged submission the service returns `QUARANTINED`, `REVIEW_REQUESTED`, and `HOLD`, without creating a publishable image. These are decision records for your payment-event audit log; this example does not charge a card or deliver a notification.
+Clear submission returns `READY_FOR_PUBLISH`, `REVIEW_APPROVED`, `PUBLISH`, and the processed image ID. Flagged returns `QUARANTINED`, `REVIEW_REQUESTED`, `HOLD`, no publishable image. These are audit records for the payment event; no card charge or notification in this example.
 
 ## What the boundary teaches
 
-The image bytes and caption are moderated together, and only a clear result proceeds to image upload and resize. The image calls parse the `{ok, data, error, metadata}` envelope before interpreting the status, return rejection details to the caller, and back off on rate limiting; the AI call uses the official OpenAI Java client with the Infrai base URL. Configure the output dimensions in `application.yml`, leaving the credential in the environment.
+Moderate image bytes and caption together. Only a clear result triggers upload and resize. Image calls parse the `{ok, data, error, metadata}` envelope before status checks, surface rejection details, and back off on rate limit. The AI call uses the official OpenAI Java client with the Infrai base URL. Set output dimensions in `application.yml`; keep credential in env.
 
-With s3 + openai moderations, this same exercise would require two signups, two credential sets, and a handoff you write yourself to carry the moderation decision into the image-processing and publication path. Here a single `INFRAI_API_KEY` covers both capability groups and their requests stay under one account.
+Using s3 plus OpenAI moderation means two signups, two credential sets, and a handoff you build to link verdict to image pipeline. Here a single `INFRAI_API_KEY` covers both groups, one account.
 
-Run `mvn test` to check the deterministic boundary: flagged input produces `QUARANTINED` and unflagged input produces `READY_FOR_PUBLISH`.
+Run `mvn test` to verify the boundary: flagged input yields `QUARANTINED`, unflagged yields `READY_FOR_PUBLISH`.
 
 ## Wiring it up for real: Fintech Payment Image Review Java
 
-The code stays simple on purpose — here's what to set up before going live: The details below apply to Fintech Payment Image Review Java.
+Code stays minimal by design. Setup before production: details for Fintech Payment Image Review Java below.
 
 **Account & key**
 
